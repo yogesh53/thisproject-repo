@@ -1,41 +1,88 @@
-var createError = require('http-errors');
-var express = require('express');
-var path = require('path');
-var cookieParser = require('cookie-parser');
-var logger = require('morgan');
+const express = require('express'),
+    bodyParser = require('body-parser'),
+    // In order to use PUT HTTP verb to edit item
+    methodOverride = require('method-override'),
+    // Mitigate XSS using sanitizer
+    sanitizer = require('sanitizer'),
+    app = express(),
+    port = 8000
 
-var indexRouter = require('./routes/index');
-var usersRouter = require('./routes/users');
+app.use(bodyParser.urlencoded({
+    extended: false
+}));
+// https: //github.com/expressjs/method-override#custom-logic
+app.use(methodOverride(function (req, res) {
+    if (req.body && typeof req.body === 'object' && '_method' in req.body) {
+        // look in urlencoded POST bodies and delete it
+        let method = req.body._method;
+        delete req.body._method;
+        return method
+    }
+}));
 
-var app = express();
 
-// view engine setup
-app.set('views', path.join(__dirname, 'views'));
-app.set('view engine', 'ejs');
+let todolist = [];
 
-app.use(logger('dev'));
-app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
-app.use(cookieParser());
-app.use(express.static(path.join(__dirname, 'public')));
+/* The to do list and the form are displayed */
+app.get('/todo', function (req, res) {
+        res.render('todo.ejs', {
+            todolist,
+            clickHandler: "func1();"
+        });
+    })
 
-app.use('/', indexRouter);
-app.use('/users', usersRouter);
+    /* Adding an item to the to do list */
+    .post('/todo/add/', function (req, res) {
+        // Escapes HTML special characters in attribute values as HTML entities
+        let newTodo = sanitizer.escape(req.body.newtodo);
+        if (req.body.newtodo != '') {
+            todolist.push(newTodo);
+        }
+        res.redirect('/todo');
+    })
 
-// catch 404 and forward to error handler
-app.use(function(req, res, next) {
-  next(createError(404));
-});
+    /* Deletes an item from the to do list */
+    .get('/todo/delete/:id', function (req, res) {
+        if (req.params.id != '') {
+            todolist.splice(req.params.id, 1);
+        }
+        res.redirect('/todo');
+    })
 
-// error handler
-app.use(function(err, req, res, next) {
-  // set locals, only providing error in development
-  res.locals.message = err.message;
-  res.locals.error = req.app.get('env') === 'development' ? err : {};
+    // Get a single todo item and render edit page
+    .get('/todo/:id', function (req, res) {
+        let todoIdx = req.params.id;
+        let todo = todolist[todoIdx];
 
-  // render the error page
-  res.status(err.status || 500);
-  res.render('error');
-});
+        if (todo) {
+            res.render('edititem.ejs', {
+                todoIdx,
+                todo,
+                clickHandler: "func1();"
+            });
+        } else {
+            res.redirect('/todo');
+        }
+    })
 
+    // Edit item in the todo list 
+    .put('/todo/edit/:id', function (req, res) {
+        let todoIdx = req.params.id;
+        // Escapes HTML special characters in attribute values as HTML entities
+        let editTodo = sanitizer.escape(req.body.editTodo);
+        if (todoIdx != '' && editTodo != '') {
+            todolist[todoIdx] = editTodo;
+        }
+        res.redirect('/todo');
+    })
+    /* Redirects to the to do list if the page requested is not found */
+    .use(function (req, res, next) {
+        res.redirect('/todo');
+    })
+
+    .listen(port, function () {
+        // Logging to console
+        console.log(`Todolist running on http://0.0.0.0:${port}`)
+    });
+// Export app
 module.exports = app;
